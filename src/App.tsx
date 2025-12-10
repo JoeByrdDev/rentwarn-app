@@ -1,15 +1,30 @@
-import React, { useState } from "react";
+import type React from "react";
+import type { CSSProperties, FormEvent } from "react";
+import { useState } from "react";
+import { Routes, Route, Link } from "react-router-dom";
 import { db } from "./firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import Dashboard from "./pages/Dashboard";
 
-function App() {
+const App: React.FC = () => {
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+    </Routes>
+  );
+};
+
+const LandingPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
   const [units, setUnits] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | loading | success | error
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
+    "idle"
+  );
   const [error, setError] = useState("");
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!email) return;
 
@@ -90,7 +105,8 @@ function App() {
           }}
         >
           RentWarn automatically tracks due dates, flags who&apos;s late, and
-          generates ready-to-send late rent notices with fees calculated for you.
+          generates ready-to-send late rent notices with fees calculated for
+          you.
         </h2>
 
         <ul
@@ -149,7 +165,7 @@ function App() {
             />
             <input
               type="number"
-              min="1"
+              min={1}
               placeholder="# of units you manage (optional)"
               value={units}
               onChange={(e) => setUnits(e.target.value)}
@@ -189,8 +205,8 @@ function App() {
               color: "#4ade80",
             }}
           >
-            You&apos;re in. We&apos;ll email you when we&apos;re ready for
-            early access.
+            You&apos;re in. We&apos;ll email you when we&apos;re ready for early
+            access.
           </p>
         )}
 
@@ -216,12 +232,18 @@ function App() {
           Built for small landlords and property managers who are tired of
           spreadsheets and chasing checks. No spam. No sharing your email.
         </p>
+
+        <p style={{ marginTop: "2rem", fontSize: "0.85rem" }}>
+          <Link to="/dashboard" style={{ color: "#4ade80" }}>
+            Go to dashboard (dev only)
+          </Link>
+        </p>
       </div>
     </div>
   );
-}
+};
 
-const inputStyle = {
+const inputStyle: CSSProperties = {
   width: "100%",
   padding: "0.6rem 0.75rem",
   borderRadius: "0.6rem",

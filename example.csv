@@ -1,0 +1,4 @@
+name,unit,email,rent,dueDay,lateFeeFlat
+John Doe,3A,john@example.com,1200,1,75
+Mary Ann,2B,mary@example.com,1000,5,50
+Carl White,1C,carl@example.com,1400,3,0
