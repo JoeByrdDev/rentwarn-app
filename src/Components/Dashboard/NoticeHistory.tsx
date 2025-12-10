@@ -1,28 +1,8 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-/*
-import { db } from "../../firebase";
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-  type QueryDocumentSnapshot,
-  type DocumentData,
-} from "firebase/firestore";
-*/
 import { auth } from "../../auth/AuthContext";
 import { noticeService } from "../../services/noticeService";
-
-
-type Notice = {
-  id: string;
-  tenantName: string;
-  unit: string;
-  period: string | null;
-  totalAmount: number | null;
-  createdAt: Date | null;
-};
+import type { Notice } from "../../types/notice";
 
 const NoticeHistory: React.FC = () => {
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -30,23 +10,22 @@ const NoticeHistory: React.FC = () => {
 
   useEffect(() => {
     const fetchNotices = async () => {
-  const user = auth.currentUser;
-  if (!user) {
-    setLoading(false);
-    return;
-  }
+      const user = auth.currentUser;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
-  try {
-    const items = await noticeService.getNoticesForOwner(user.uid);
-    setNotices(items);
-  } catch (err) {
-    console.error("Failed to load notices", err);
-    setNotices([]);
-  } finally {
-    setLoading(false);
-  }
-};
-
+      try {
+        const items = await noticeService.getNoticesForOwner(user.uid);
+        setNotices(items);
+      } catch (err) {
+        console.error("Failed to load notices", err);
+        setNotices([]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
     void fetchNotices();
   }, []);
@@ -111,7 +90,9 @@ const NoticeHistory: React.FC = () => {
                   <td style={tdStyle}>{n.unit || "-"}</td>
                   <td style={tdStyle}>{n.period || "-"}</td>
                   <td style={tdStyle}>
-                    {n.totalAmount != null ? `$${n.totalAmount.toFixed(2)}` : "-"}
+                    {n.totalAmount != null
+                      ? `$${n.totalAmount.toFixed(2)}`
+                      : "-"}
                   </td>
                 </tr>
               ))}

@@ -1,19 +1,6 @@
 import type React from "react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { db } from "../firebase";
-import {
-  collection,
-  addDoc,
-  getDocs,
-  serverTimestamp,
-  query,
-  where,
-} from "firebase/firestore";
-import type {
-  QueryDocumentSnapshot,
-  DocumentData,
-} from "firebase/firestore";
 import Papa from "papaparse";
 import type { ParseResult } from "papaparse";
 import { auth } from "../auth/AuthContext";
@@ -22,22 +9,6 @@ import TenantTable from "../components/dashboard/TenantTable";
 import TenantForm from "../components/dashboard/TenantForm";
 import NoticeHistory from "../components/dashboard/NoticeHistory";
 import { tenantService } from "../services/tenantService";
-
-
-const mapDocToTenant = (
-  docSnap: QueryDocumentSnapshot<DocumentData>
-): Tenant => {
-  const data = docSnap.data() as any;
-  return {
-    id: docSnap.id,
-    name: data.name ?? "",
-    unit: data.unit ?? "",
-    email: data.email ?? "",
-    rent: Number(data.rent ?? 0),
-    dueDay: Number(data.dueDay ?? 1),
-    lateFeeFlat: Number(data.lateFeeFlat ?? 0),
-  };
-};
 
 const Dashboard: React.FC = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -49,42 +20,55 @@ const Dashboard: React.FC = () => {
   const [lateFeeFlat, setLateFeeFlat] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-	
-useEffect(() => {
-  const fetchTenants = async () => {
-    const user = auth.currentUser;
-    if (!user) return;
 
-    const items = await tenantService.getTenantsForOwner(user.uid);
-    setTenants(items);
-  };
+  // Load tenants for the current owner
+  useEffect(() => {
+    const fetchTenants = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
 
-  void fetchTenants();
-}, []);
+      try {
+        const items = await tenantService.getTenantsForOwner(user.uid);
+        setTenants(items);
+      } catch (err) {
+        console.error("Failed to load tenants", err);
+      }
+    };
+
+    void fetchTenants();
+  }, []);
 
   const handleAddTenant = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!name || !email || !rent || !dueDay) return;
 
     const user = auth.currentUser;
-if (!user) return;
+    if (!user) return;
 
-setLoading(true);
-try {
-  const created = await tenantService.createTenant(user.uid, {
-    name,
-    unit,
-    email,
-    rent: Number(rent),
-    dueDay: Number(dueDay),
-    lateFeeFlat: lateFeeFlat ? Number(lateFeeFlat) : 0,
-  });
+    setLoading(true);
+    try {
+      const created = await tenantService.createTenant(user.uid, {
+        name,
+        unit,
+        email,
+        rent: Number(rent),
+        dueDay: Number(dueDay),
+        lateFeeFlat: lateFeeFlat ? Number(lateFeeFlat) : 0,
+      });
 
-  setTenants((prev) => [...prev, created]);
-  // clear form...
-} finally {
-  setLoading(false);
-}
+      setTenants((prev) => [...prev, created]);
+
+      setName("");
+      setUnit("");
+      setEmail("");
+      setRent("");
+      setDueDay("");
+      setLateFeeFlat("");
+    } catch (err) {
+      console.error("Failed to create tenant", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCSVUpload = (file: File | undefined) => {
@@ -99,28 +83,25 @@ try {
       complete: async (results: ParseResult<any>) => {
         const rows = results.data as any[];
 
-        for (const row of rows) {
-          if (!row.name || !row.email || !row.rent || !row.dueDay) continue;
+        try {
+          for (const row of rows) {
+            if (!row.name || !row.email || !row.rent || !row.dueDay) continue;
 
-          await addDoc(collection(db, "tenants"), {
-            name: row.name,
-            unit: row.unit || "",
-            email: row.email,
-            rent: Number(row.rent),
-            dueDay: Number(row.dueDay),
-            lateFeeFlat: Number(row.lateFeeFlat || 0),
-            createdAt: serverTimestamp(),
-            ownerId: user.uid,
-          });
+            await tenantService.createTenant(user.uid, {
+              name: row.name,
+              unit: row.unit || "",
+              email: row.email,
+              rent: Number(row.rent),
+              dueDay: Number(row.dueDay),
+              lateFeeFlat: Number(row.lateFeeFlat || 0),
+            });
+          }
+
+          const items = await tenantService.getTenantsForOwner(user.uid);
+          setTenants(items);
+        } catch (err) {
+          console.error("Failed to import tenants from CSV", err);
         }
-
-        const tenantsSnap = await getDocs(
-          query(collection(db, "tenants"), where("ownerId", "==", user.uid))
-        );
-        const items = tenantsSnap.docs.map((d) =>
-          mapDocToTenant(d as QueryDocumentSnapshot<DocumentData>)
-        );
-        setTenants(items);
       },
     });
   };
