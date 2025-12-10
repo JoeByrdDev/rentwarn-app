@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import {
   collection,
@@ -9,19 +9,18 @@ import {
   serverTimestamp,
   query,
   where,
-  doc,
-  getDoc,
-  type QueryDocumentSnapshot,
-  type DocumentData,
+} from "firebase/firestore";
+import type {
+  QueryDocumentSnapshot,
+  DocumentData,
 } from "firebase/firestore";
 import Papa from "papaparse";
 import type { ParseResult } from "papaparse";
 import { auth } from "../auth/AuthContext";
 import type { Tenant } from "../types/tenant";
-import type { OwnerSettings } from "../types/ownerSettings";
 import TenantTable from "../components/dashboard/TenantTable";
 import TenantForm from "../components/dashboard/TenantForm";
-import NoticePreview from "../components/dashboard/NoticePreview";
+import NoticeHistory from "../components/dashboard/NoticeHistory";
 
 const mapDocToTenant = (
   docSnap: QueryDocumentSnapshot<DocumentData>
@@ -47,17 +46,13 @@ const Dashboard: React.FC = () => {
   const [dueDay, setDueDay] = useState("");
   const [lateFeeFlat, setLateFeeFlat] = useState("");
   const [loading, setLoading] = useState(false);
-  const [noticePreview, setNoticePreview] = useState<string | null>(null);
-  const [ownerSettings, setOwnerSettings] = useState<OwnerSettings | null>(
-    null
-  );
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchTenants = async () => {
       const user = auth.currentUser;
       if (!user) return;
 
-      // Fetch tenants for this owner
       const tenantsSnap = await getDocs(
         query(collection(db, "tenants"), where("ownerId", "==", user.uid))
       );
@@ -65,26 +60,9 @@ const Dashboard: React.FC = () => {
         mapDocToTenant(d as QueryDocumentSnapshot<DocumentData>)
       );
       setTenants(items);
-
-      // Fetch owner settings
-      const settingsRef = doc(db, "owners", user.uid);
-      const settingsSnap = await getDoc(settingsRef);
-      if (settingsSnap.exists()) {
-        const data = settingsSnap.data() as any;
-        setOwnerSettings({
-          businessName: data.businessName ?? "",
-          contactInfo: data.contactInfo ?? "",
-          defaultDueDay:
-            typeof data.defaultDueDay === "number" ? data.defaultDueDay : null,
-          defaultLateFeeFlat:
-            typeof data.defaultLateFeeFlat === "number"
-              ? data.defaultLateFeeFlat
-              : null,
-        });
-      }
     };
 
-    void fetchData();
+    void fetchTenants();
   }, []);
 
   const handleAddTenant = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -177,52 +155,8 @@ const Dashboard: React.FC = () => {
     return todayDay > tenant.dueDay;
   };
 
-  const generateNoticeText = (tenant: Tenant): string => {
-    const today = new Date();
-    const month = today.toLocaleString("default", { month: "long" });
-    const day = today.getDate();
-    const year = today.getFullYear();
-
-    const base = tenant.rent;
-    const lateFee = tenant.lateFeeFlat || 0;
-    const total = base + lateFee;
-
-    const businessName =
-      ownerSettings?.businessName || "[Your Company Name]";
-    const contactInfo =
-      ownerSettings?.contactInfo || "[Your Contact Info]";
-
-    return `
-${month} ${day}, ${year}
-
-${tenant.name}
-Unit ${tenant.unit}
-
-RE: Late Rent Notice
-
-Dear ${tenant.name},
-
-Our records indicate that your rent for Unit ${tenant.unit} in the amount of $${base.toFixed(
-      2
-    )} was due on the ${tenant.dueDay} of this month and has not yet been received.
-
-In accordance with the terms of your lease, a late fee of $${lateFee.toFixed(
-      2
-    )} has been applied, bringing your total amount due to $${total.toFixed(2)}.
-
-Please pay the total amount due immediately to avoid further action.
-
-If you believe you have received this notice in error, please contact management as soon as possible.
-
-Sincerely,
-${businessName}
-${contactInfo}
-`.trim();
-  };
-
   const handleGenerateNotice = (tenant: Tenant) => {
-    const text = generateNoticeText(tenant);
-    setNoticePreview(text);
+    navigate(`/notice/${tenant.id}`);
   };
 
   return (
@@ -235,24 +169,23 @@ ${contactInfo}
       }}
     >
       <div
-  style={{
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "1rem",
-  }}
->
-  <h1 style={{ fontSize: "2rem", marginBottom: 0 }}>RentWarn Dashboard</h1>
-  <div style={{ display: "flex", gap: "1rem", fontSize: "0.9rem" }}>
-    <Link to="/settings" style={{ color: "#9ca3af" }}>
-      Settings
-    </Link>
-    <Link to="/billing" style={{ color: "#4ade80" }}>
-      Billing
-    </Link>
-  </div>
-</div>
-
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "1rem",
+        }}
+      >
+        <h1 style={{ fontSize: "2rem", marginBottom: 0 }}>RentWarn Dashboard</h1>
+        <div style={{ display: "flex", gap: "1rem", fontSize: "0.9rem" }}>
+          <Link to="/settings" style={{ color: "#9ca3af" }}>
+            Settings
+          </Link>
+          <Link to="/billing" style={{ color: "#4ade80" }}>
+            Billing
+          </Link>
+        </div>
+      </div>
 
       <p style={{ marginBottom: "1.5rem", color: "#9ca3af" }}>
         Manage tenants, see who is likely late, and generate late rent notices.
@@ -291,7 +224,7 @@ ${contactInfo}
         />
       </div>
 
-      <NoticePreview text={noticePreview} />
+      <NoticeHistory />
     </div>
   );
 };

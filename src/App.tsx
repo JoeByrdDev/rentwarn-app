@@ -7,6 +7,7 @@ import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import Dashboard from "./pages/Dashboard";
 import LoginPage from "./pages/LoginPage";
 import BillingPage from "./pages/BillingPage";
+import NoticeEditorPage from "./pages/NoticeEditorPage";
 import SettingsPage from "./pages/SettingsPage";
 import SignupPage from "./pages/SignupPage";
 import { useAuth } from "./auth/AuthContext";
@@ -22,6 +23,14 @@ const App: React.FC = () => {
   element={
     <RequireAuth>
       <BillingPage />
+    </RequireAuth>
+  }
+/>
+	  <Route
+  path="/notice/:tenantId"
+  element={
+    <RequireAuth>
+      <NoticeEditorPage />
     </RequireAuth>
   }
 />
