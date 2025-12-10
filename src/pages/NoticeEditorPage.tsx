@@ -2,23 +2,20 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { db } from "../firebase";
-import {
-  collection,
-  addDoc,
-  doc,
-  getDoc,
-  serverTimestamp,
-} from "firebase/firestore";
-import type { DocumentData } from "firebase/firestore";
+import { doc, getDoc, type DocumentData } from "firebase/firestore";
 import { auth } from "../auth/AuthContext";
 import type { Tenant } from "../types/tenant";
 import type { OwnerSettings } from "../types/ownerSettings";
+import { ownerService } from "../services/ownerService";
+import { noticeService } from "../services/noticeService";
+import { emailQueueService } from "../services/emailQueueService";
+import {
+  validateNoticeInputs,
+  buildNoticeText,
+  type NoticeEditableSections,
+} from "../utils/noticeUtils";
 
-type EditableParts = {
-  intro: string;
-  paymentInstructions: string;
-  extraNotes: string;
-};
+type EditableParts = NoticeEditableSections;
 
 const NoticeEditorPage: React.FC = () => {
   const { tenantId } = useParams();
@@ -39,9 +36,7 @@ const NoticeEditorPage: React.FC = () => {
 
   const [blockingIssues, setBlockingIssues] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
-  
   const [noticeEmail, setNoticeEmail] = useState("");
-
 
   useEffect(() => {
     const loadData = async () => {
@@ -65,7 +60,7 @@ const NoticeEditorPage: React.FC = () => {
       }
 
       try {
-        // Load tenant
+        // Load tenant directly (we could later move this into tenantService)
         const tenantRef = doc(db, "tenants", tenantId);
         const tenantSnap = await getDoc(tenantRef);
 
@@ -92,41 +87,13 @@ const NoticeEditorPage: React.FC = () => {
           lateFeeFlat: Number(tenantData.lateFeeFlat ?? 0),
         };
         setTenant(tenantObj);
-		setNoticeEmail(tenantObj.email || "");
+        setNoticeEmail(tenantObj.email || "");
 
-
-        // Load owner settings
-        const ownerRef = doc(db, "owners", user.uid);
-        const ownerSnap = await getDoc(ownerRef);
-        let ownerObj: OwnerSettings;
-
-        if (ownerSnap.exists()) {
-          const data = ownerSnap.data() as DocumentData;
-          ownerObj = {
-            businessName: data.businessName ?? "",
-            contactInfo: data.contactInfo ?? "",
-            defaultDueDay:
-              typeof data.defaultDueDay === "number"
-                ? data.defaultDueDay
-                : null,
-            defaultLateFeeFlat:
-              typeof data.defaultLateFeeFlat === "number"
-                ? data.defaultLateFeeFlat
-                : null,
-          };
-        } else {
-          ownerObj = {
-            businessName: "",
-            contactInfo: "",
-            defaultDueDay: null,
-            defaultLateFeeFlat: null,
-          };
-        }
-
+        // Load owner settings via service
+        const ownerObj = await ownerService.getOwnerSettings(user.uid);
         setOwnerSettings(ownerObj);
 
-        // Validate
-        const { blocking, warn } = validateInputs(tenantObj, ownerObj);
+        const { blocking, warn } = validateNoticeInputs(tenantObj, ownerObj);
         setBlockingIssues(blocking);
         setWarnings(warn);
       } catch (err) {
@@ -200,8 +167,7 @@ const NoticeEditorPage: React.FC = () => {
       return;
     }
 
-    // Re-check blocking issues (in case data changed)
-    const { blocking } = validateInputs(tenant, ownerSettings);
+    const { blocking } = validateNoticeInputs(tenant, ownerSettings);
     if (blocking.length > 0) {
       setBlockingIssues(blocking);
       setStatus(
@@ -217,20 +183,19 @@ const NoticeEditorPage: React.FC = () => {
         today.getMonth() + 1
       ).padStart(2, "0")}`;
 
-      const base = tenant.rent;
+      const baseAmount = tenant.rent;
       const lateFee = tenant.lateFeeFlat || 0;
-      const total = base + lateFee;
+      const totalAmount = baseAmount + lateFee;
 
-      await addDoc(collection(db, "notices"), {
+      await noticeService.logNotice({
         ownerId: user.uid,
         tenantId: tenant.id,
         tenantName: tenant.name,
         unit: tenant.unit,
-        period,
-        baseAmount: base,
+        baseAmount,
         lateFee,
-        totalAmount: total,
-        createdAt: serverTimestamp(),
+        totalAmount,
+        period,
         text: noticeText,
       });
 
@@ -254,7 +219,7 @@ const NoticeEditorPage: React.FC = () => {
       return;
     }
 
-    const { blocking } = validateInputs(tenant, ownerSettings);
+    const { blocking } = validateNoticeInputs(tenant, ownerSettings);
     if (blocking.length > 0) {
       setBlockingIssues(blocking);
       setStatus(
@@ -265,13 +230,12 @@ const NoticeEditorPage: React.FC = () => {
     }
 
     if (!noticeEmail) {
-  setStatus(
-    "Tenant email is missing. Please enter an email address for this notice."
-  );
-  setSaving(false);
-  return;
-}
-
+      setStatus(
+        "Tenant email is missing. Please enter an email address for this notice."
+      );
+      setSaving(false);
+      return;
+    }
 
     try {
       const today = new Date();
@@ -279,34 +243,29 @@ const NoticeEditorPage: React.FC = () => {
         today.getMonth() + 1
       ).padStart(2, "0")}`;
 
-      const base = tenant.rent;
+      const baseAmount = tenant.rent;
       const lateFee = tenant.lateFeeFlat || 0;
-      const total = base + lateFee;
+      const totalAmount = baseAmount + lateFee;
 
-      // Save notice
-      const noticeRef = await addDoc(collection(db, "notices"), {
+      const noticeRef = await noticeService.logNotice({
         ownerId: user.uid,
         tenantId: tenant.id,
         tenantName: tenant.name,
         unit: tenant.unit,
-        period,
-        baseAmount: base,
+        baseAmount,
         lateFee,
-        totalAmount: total,
-        createdAt: serverTimestamp(),
+        totalAmount,
+        period,
         text: noticeText,
       });
 
-      // Queue email
-      await addDoc(collection(db, "emailQueue"), {
+      await emailQueueService.queueNoticeEmail({
         ownerId: user.uid,
         tenantId: tenant.id,
         noticeId: noticeRef.id,
         to: noticeEmail,
         subject: `Late Rent Notice - ${tenant.name}`,
         bodyText: noticeText,
-        createdAt: serverTimestamp(),
-        status: "pending",
       });
 
       setStatus(
@@ -402,50 +361,49 @@ const NoticeEditorPage: React.FC = () => {
               {ownerSettings.businessName || "[Your business name]"}
             </p>
           </div>
-		  
-		  <div
-  style={{
-    marginBottom: "0.75rem",
-    fontSize: "0.85rem",
-    color: "#e5e7eb",
-  }}
->
-  <label
-    style={{
-      display: "block",
-      fontSize: "0.85rem",
-      marginBottom: "0.25rem",
-    }}
-  >
-    Tenant email for this notice
-  </label>
-  <input
-    type="email"
-    value={noticeEmail}
-    onChange={(e) => setNoticeEmail(e.target.value)}
-    placeholder="tenant@example.com"
-    style={{
-      width: "100%",
-      padding: "0.6rem 0.75rem",
-      borderRadius: "0.6rem",
-      border: "1px solid #374151",
-      background: "#020617",
-      color: "#e5e7eb",
-      fontSize: "0.85rem",
-    }}
-  />
-  <p
-    style={{
-      marginTop: "0.25rem",
-      fontSize: "0.75rem",
-      color: "#9ca3af",
-    }}
-  >
-    This address will be used when emailing the notice. It does not yet update
-    the tenant record.
-  </p>
-</div>
 
+          <div
+            style={{
+              marginBottom: "0.75rem",
+              fontSize: "0.85rem",
+              color: "#e5e7eb",
+            }}
+          >
+            <label
+              style={{
+                display: "block",
+                fontSize: "0.85rem",
+                marginBottom: "0.25rem",
+              }}
+            >
+              Tenant email for this notice
+            </label>
+            <input
+              type="email"
+              value={noticeEmail}
+              onChange={(e) => setNoticeEmail(e.target.value)}
+              placeholder="tenant@example.com"
+              style={{
+                width: "100%",
+                padding: "0.6rem 0.75rem",
+                borderRadius: "0.6rem",
+                border: "1px solid #374151",
+                background: "#020617",
+                color: "#e5e7eb",
+                fontSize: "0.85rem",
+              }}
+            />
+            <p
+              style={{
+                marginTop: "0.25rem",
+                fontSize: "0.75rem",
+                color: "#9ca3af",
+              }}
+            >
+              This address will be used when emailing the notice. It does not
+              yet update the tenant record.
+            </p>
+          </div>
 
           {(blockingIssues.length > 0 || warnings.length > 0) && (
             <div
@@ -524,8 +482,10 @@ const NoticeEditorPage: React.FC = () => {
                 Optional intro paragraph
               </label>
               <textarea
-                value={editable.intro}
-                onChange={(e) => handleEditableChange("intro")(e.target.value)}
+                value={editable.intro ?? ""}
+                onChange={(e) =>
+                  handleEditableChange("intro")(e.target.value)
+                }
                 style={textareaStyle}
                 placeholder="E.g. 'This letter is to formally notify you that your rent payment is past due.'"
               />
@@ -542,7 +502,7 @@ const NoticeEditorPage: React.FC = () => {
                 Payment instructions
               </label>
               <textarea
-                value={editable.paymentInstructions}
+                value={editable.paymentInstructions ?? ""}
                 onChange={(e) =>
                   handleEditableChange("paymentInstructions")(e.target.value)
                 }
@@ -561,7 +521,7 @@ const NoticeEditorPage: React.FC = () => {
                 Extra notes (optional)
               </label>
               <textarea
-                value={editable.extraNotes}
+                value={editable.extraNotes ?? ""}
                 onChange={(e) =>
                   handleEditableChange("extraNotes")(e.target.value)
                 }
@@ -677,93 +637,6 @@ const NoticeEditorPage: React.FC = () => {
       </div>
     </div>
   );
-};
-
-const validateInputs = (
-  tenant: Tenant,
-  ownerSettings: OwnerSettings
-): { blocking: string[]; warn: string[] } => {
-  const blocking: string[] = [];
-  const warn: string[] = [];
-
-  if (!tenant.name) blocking.push("Tenant name is missing.");
-  if (!tenant.rent || tenant.rent <= 0)
-    blocking.push("Tenant rent amount is missing or invalid.");
-  if (!tenant.dueDay) blocking.push("Tenant rent due day is missing.");
-  if (!ownerSettings.businessName)
-    blocking.push("Your business/management name is missing in Settings.");
-  if (!ownerSettings.contactInfo)
-    blocking.push("Your contact info is missing in Settings.");
-
-  if (!tenant.email)
-    warn.push(
-      "Tenant email is missing. You will not be able to send this notice by email until it is added."
-    );
-  if (!tenant.unit)
-    warn.push("Tenant unit is blank. Consider adding it for clarity.");
-
-  return { blocking, warn };
-};
-
-const buildNoticeText = (
-  tenant: Tenant,
-  ownerSettings: OwnerSettings,
-  editable: EditableParts
-): string => {
-  const today = new Date();
-  const month = today.toLocaleString("default", { month: "long" });
-  const day = today.getDate();
-  const year = today.getFullYear();
-
-  const base = tenant.rent;
-  const lateFee = tenant.lateFeeFlat || 0;
-  const total = base + lateFee;
-
-  const businessName =
-    ownerSettings.businessName || "[Your Company Name]";
-  const contactInfo =
-    ownerSettings.contactInfo || "[Your Contact Info]";
-
-  const intro = editable.intro.trim()
-    ? editable.intro.trim() + "\n\n"
-    : "";
-
-  const paymentInstructions = editable.paymentInstructions.trim()
-    ? editable.paymentInstructions.trim() + "\n\n"
-    : "";
-
-  const extraNotes = editable.extraNotes.trim()
-    ? editable.extraNotes.trim() + "\n\n"
-    : "";
-
-  return `
-${month} ${day}, ${year}
-
-${tenant.name}
-${tenant.unit ? `Unit ${tenant.unit}\n` : ""}
-
-RE: Late Rent Notice
-
-${intro}Dear ${tenant.name},
-
-Our records indicate that your rent for ${
-    tenant.unit ? `Unit ${tenant.unit} ` : ""
-  }in the amount of $${base.toFixed(
-    2
-  )} was due on the ${tenant.dueDay} of this month and has not yet been received.
-
-In accordance with the terms of your lease, a late fee of $${lateFee.toFixed(
-    2
-  )} has been applied, bringing your total amount due to $${total.toFixed(2)}.
-
-${paymentInstructions}Please pay the total amount due immediately to avoid further action.
-
-If you believe you have received this notice in error, please contact management as soon as possible.
-
-${extraNotes}Sincerely,
-${businessName}
-${contactInfo}
-`.trim();
 };
 
 const backButtonStyle: React.CSSProperties = {

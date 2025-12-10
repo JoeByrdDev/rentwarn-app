@@ -1,5 +1,6 @@
 import type React from "react";
 import { useEffect, useState } from "react";
+/*
 import { db } from "../../firebase";
 import {
   collection,
@@ -9,7 +10,10 @@ import {
   type QueryDocumentSnapshot,
   type DocumentData,
 } from "firebase/firestore";
+*/
 import { auth } from "../../auth/AuthContext";
+import { noticeService } from "../../services/noticeService";
+
 
 type Notice = {
   id: string;
@@ -26,51 +30,23 @@ const NoticeHistory: React.FC = () => {
 
   useEffect(() => {
     const fetchNotices = async () => {
-      const user = auth.currentUser;
-      if (!user) {
-        setLoading(false);
-        return;
-      }
+  const user = auth.currentUser;
+  if (!user) {
+    setLoading(false);
+    return;
+  }
 
-      try {
-        const q = query(
-          collection(db, "notices"),
-          where("ownerId", "==", user.uid)
-        );
+  try {
+    const items = await noticeService.getNoticesForOwner(user.uid);
+    setNotices(items);
+  } catch (err) {
+    console.error("Failed to load notices", err);
+    setNotices([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
-        const snap = await getDocs(q);
-        const items = snap.docs.map(
-          (docSnap: QueryDocumentSnapshot<DocumentData>) => {
-            const data = docSnap.data() as any;
-            return {
-              id: docSnap.id,
-              tenantName: data.tenantName ?? "",
-              unit: data.unit ?? "",
-              period: data.period ?? null,
-              totalAmount:
-                typeof data.totalAmount === "number" ? data.totalAmount : null,
-              createdAt: data.createdAt?.toDate
-                ? (data.createdAt.toDate() as Date)
-                : null,
-            } as Notice;
-          }
-        );
-
-        // Sort newest first on the client
-        items.sort((a, b) => {
-          const ta = a.createdAt?.getTime() ?? 0;
-          const tb = b.createdAt?.getTime() ?? 0;
-          return tb - ta;
-        });
-
-        setNotices(items);
-      } catch (err) {
-        console.error("Failed to load notices", err);
-        setNotices([]);
-      } finally {
-        setLoading(false);
-      }
-    };
 
     void fetchNotices();
   }, []);

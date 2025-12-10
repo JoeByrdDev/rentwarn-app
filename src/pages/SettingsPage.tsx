@@ -1,9 +1,10 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "../firebase";
+//import { doc, getDoc, setDoc } from "firebase/firestore";
+//import { db } from "../firebase";
 import { auth } from "../auth/AuthContext";
 import type { OwnerSettings } from "../types/ownerSettings";
+import { ownerService } from "../services/ownerService";
 
 const SettingsPage: React.FC = () => {
   const [settings, setSettings] = useState<OwnerSettings>({
@@ -17,32 +18,17 @@ const SettingsPage: React.FC = () => {
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      const user = auth.currentUser;
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      const ref = doc(db, "owners", user.uid);
-      const snap = await getDoc(ref);
-
-      if (snap.exists()) {
-        const data = snap.data();
-        setSettings({
-          businessName: data.businessName ?? "",
-          contactInfo: data.contactInfo ?? "",
-          defaultDueDay:
-            typeof data.defaultDueDay === "number" ? data.defaultDueDay : null,
-          defaultLateFeeFlat:
-            typeof data.defaultLateFeeFlat === "number"
-              ? data.defaultLateFeeFlat
-              : null,
-        });
-      }
-
+  const fetchSettings = async () => {
+    const user = auth.currentUser;
+    if (!user) {
       setLoading(false);
-    };
+      return;
+    }
+
+    const s = await ownerService.getOwnerSettings(user.uid);
+    setSettings(s);
+    setLoading(false);
+  };
 
     void fetchSettings();
   }, []);
@@ -64,30 +50,20 @@ const SettingsPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const user = auth.currentUser;
-    if (!user) return;
+if (!user) return;
 
-    setSaving(true);
-    setStatus(null);
+setSaving(true);
+setStatus(null);
 
-    try {
-      const ref = doc(db, "owners", user.uid);
-      await setDoc(
-        ref,
-        {
-          businessName: settings.businessName,
-          contactInfo: settings.contactInfo,
-          defaultDueDay: settings.defaultDueDay,
-          defaultLateFeeFlat: settings.defaultLateFeeFlat,
-        },
-        { merge: true }
-      );
-      setStatus("Saved");
-    } catch (err) {
-      console.error(err);
-      setStatus("Error saving settings");
-    } finally {
-      setSaving(false);
-    }
+try {
+  await ownerService.saveOwnerSettings(user.uid, settings);
+  setStatus("Saved");
+} catch (err) {
+  console.error(err);
+  setStatus("Error saving settings");
+} finally {
+  setSaving(false);
+}
   };
 
   if (loading) {

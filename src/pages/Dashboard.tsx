@@ -21,6 +21,8 @@ import type { Tenant } from "../types/tenant";
 import TenantTable from "../components/dashboard/TenantTable";
 import TenantForm from "../components/dashboard/TenantForm";
 import NoticeHistory from "../components/dashboard/NoticeHistory";
+import { tenantService } from "../services/tenantService";
+
 
 const mapDocToTenant = (
   docSnap: QueryDocumentSnapshot<DocumentData>
@@ -47,68 +49,42 @@ const Dashboard: React.FC = () => {
   const [lateFeeFlat, setLateFeeFlat] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+	
+useEffect(() => {
+  const fetchTenants = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
 
-  useEffect(() => {
-    const fetchTenants = async () => {
-      const user = auth.currentUser;
-      if (!user) return;
+    const items = await tenantService.getTenantsForOwner(user.uid);
+    setTenants(items);
+  };
 
-      const tenantsSnap = await getDocs(
-        query(collection(db, "tenants"), where("ownerId", "==", user.uid))
-      );
-      const items = tenantsSnap.docs.map((d) =>
-        mapDocToTenant(d as QueryDocumentSnapshot<DocumentData>)
-      );
-      setTenants(items);
-    };
-
-    void fetchTenants();
-  }, []);
+  void fetchTenants();
+}, []);
 
   const handleAddTenant = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!name || !email || !rent || !dueDay) return;
 
     const user = auth.currentUser;
-    if (!user) return;
+if (!user) return;
 
-    setLoading(true);
-    try {
-      const payload = {
-        name,
-        unit,
-        email,
-        rent: Number(rent),
-        dueDay: Number(dueDay),
-        lateFeeFlat: lateFeeFlat ? Number(lateFeeFlat) : 0,
-        createdAt: serverTimestamp(),
-        ownerId: user.uid,
-      };
+setLoading(true);
+try {
+  const created = await tenantService.createTenant(user.uid, {
+    name,
+    unit,
+    email,
+    rent: Number(rent),
+    dueDay: Number(dueDay),
+    lateFeeFlat: lateFeeFlat ? Number(lateFeeFlat) : 0,
+  });
 
-      const docRef = await addDoc(collection(db, "tenants"), payload);
-
-      setTenants((prev) => [
-        ...prev,
-        {
-          id: docRef.id,
-          name,
-          unit,
-          email,
-          rent: Number(rent),
-          dueDay: Number(dueDay),
-          lateFeeFlat: lateFeeFlat ? Number(lateFeeFlat) : 0,
-        },
-      ]);
-
-      setName("");
-      setUnit("");
-      setEmail("");
-      setRent("");
-      setDueDay("");
-      setLateFeeFlat("");
-    } finally {
-      setLoading(false);
-    }
+  setTenants((prev) => [...prev, created]);
+  // clear form...
+} finally {
+  setLoading(false);
+}
   };
 
   const handleCSVUpload = (file: File | undefined) => {

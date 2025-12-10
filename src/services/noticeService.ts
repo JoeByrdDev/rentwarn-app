@@ -10,6 +10,7 @@ import {
 import { db } from "../firebase";
 import type { Notice } from "../types/notice";
 
+
 const noticesCollection = collection(db, "notices");
 
 const mapDocToNotice = (
