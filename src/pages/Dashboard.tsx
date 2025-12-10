@@ -1,24 +1,42 @@
 import type React from "react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { db } from "../firebase";
 import {
   collection,
   addDoc,
   getDocs,
   serverTimestamp,
+  query,
+  where,
+  doc,
+  getDoc,
+  type QueryDocumentSnapshot,
+  type DocumentData,
 } from "firebase/firestore";
-import type {
-  QueryDocumentSnapshot,
-  DocumentData,
-} from "firebase/firestore";
-
 import Papa from "papaparse";
 import type { ParseResult } from "papaparse";
-
+import { auth } from "../auth/AuthContext";
 import type { Tenant } from "../types/tenant";
+import type { OwnerSettings } from "../types/ownerSettings";
 import TenantTable from "../components/dashboard/TenantTable";
 import TenantForm from "../components/dashboard/TenantForm";
 import NoticePreview from "../components/dashboard/NoticePreview";
+
+const mapDocToTenant = (
+  docSnap: QueryDocumentSnapshot<DocumentData>
+): Tenant => {
+  const data = docSnap.data() as any;
+  return {
+    id: docSnap.id,
+    name: data.name ?? "",
+    unit: data.unit ?? "",
+    email: data.email ?? "",
+    rent: Number(data.rent ?? 0),
+    dueDay: Number(data.dueDay ?? 1),
+    lateFeeFlat: Number(data.lateFeeFlat ?? 0),
+  };
+};
 
 const Dashboard: React.FC = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -30,33 +48,51 @@ const Dashboard: React.FC = () => {
   const [lateFeeFlat, setLateFeeFlat] = useState("");
   const [loading, setLoading] = useState(false);
   const [noticePreview, setNoticePreview] = useState<string | null>(null);
+  const [ownerSettings, setOwnerSettings] = useState<OwnerSettings | null>(
+    null
+  );
 
   useEffect(() => {
-    const fetchTenants = async () => {
-      const snap = await getDocs(collection(db, "tenants"));
-      const items = snap.docs.map(
-        (doc: QueryDocumentSnapshot<DocumentData>) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            name: data.name ?? "",
-            unit: data.unit ?? "",
-            email: data.email ?? "",
-            rent: Number(data.rent ?? 0),
-            dueDay: Number(data.dueDay ?? 1),
-            lateFeeFlat: Number(data.lateFeeFlat ?? 0),
-          } as Tenant;
-        }
+    const fetchData = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      // Fetch tenants for this owner
+      const tenantsSnap = await getDocs(
+        query(collection(db, "tenants"), where("ownerId", "==", user.uid))
+      );
+      const items = tenantsSnap.docs.map((d) =>
+        mapDocToTenant(d as QueryDocumentSnapshot<DocumentData>)
       );
       setTenants(items);
+
+      // Fetch owner settings
+      const settingsRef = doc(db, "owners", user.uid);
+      const settingsSnap = await getDoc(settingsRef);
+      if (settingsSnap.exists()) {
+        const data = settingsSnap.data() as any;
+        setOwnerSettings({
+          businessName: data.businessName ?? "",
+          contactInfo: data.contactInfo ?? "",
+          defaultDueDay:
+            typeof data.defaultDueDay === "number" ? data.defaultDueDay : null,
+          defaultLateFeeFlat:
+            typeof data.defaultLateFeeFlat === "number"
+              ? data.defaultLateFeeFlat
+              : null,
+        });
+      }
     };
 
-    void fetchTenants();
+    void fetchData();
   }, []);
 
   const handleAddTenant = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!name || !email || !rent || !dueDay) return;
+
+    const user = auth.currentUser;
+    if (!user) return;
 
     setLoading(true);
     try {
@@ -68,6 +104,7 @@ const Dashboard: React.FC = () => {
         dueDay: Number(dueDay),
         lateFeeFlat: lateFeeFlat ? Number(lateFeeFlat) : 0,
         createdAt: serverTimestamp(),
+        ownerId: user.uid,
       };
 
       const docRef = await addDoc(collection(db, "tenants"), payload);
@@ -99,6 +136,9 @@ const Dashboard: React.FC = () => {
   const handleCSVUpload = (file: File | undefined) => {
     if (!file) return;
 
+    const user = auth.currentUser;
+    if (!user) return;
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -116,23 +156,15 @@ const Dashboard: React.FC = () => {
             dueDay: Number(row.dueDay),
             lateFeeFlat: Number(row.lateFeeFlat || 0),
             createdAt: serverTimestamp(),
+            ownerId: user.uid,
           });
         }
 
-        const snap = await getDocs(collection(db, "tenants"));
-        const items = snap.docs.map(
-          (doc: QueryDocumentSnapshot<DocumentData>) => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              name: data.name ?? "",
-              unit: data.unit ?? "",
-              email: data.email ?? "",
-              rent: Number(data.rent ?? 0),
-              dueDay: Number(data.dueDay ?? 1),
-              lateFeeFlat: Number(data.lateFeeFlat ?? 0),
-            } as Tenant;
-          }
+        const tenantsSnap = await getDocs(
+          query(collection(db, "tenants"), where("ownerId", "==", user.uid))
+        );
+        const items = tenantsSnap.docs.map((d) =>
+          mapDocToTenant(d as QueryDocumentSnapshot<DocumentData>)
         );
         setTenants(items);
       },
@@ -154,6 +186,11 @@ const Dashboard: React.FC = () => {
     const base = tenant.rent;
     const lateFee = tenant.lateFeeFlat || 0;
     const total = base + lateFee;
+
+    const businessName =
+      ownerSettings?.businessName || "[Your Company Name]";
+    const contactInfo =
+      ownerSettings?.contactInfo || "[Your Contact Info]";
 
     return `
 ${month} ${day}, ${year}
@@ -178,8 +215,8 @@ Please pay the total amount due immediately to avoid further action.
 If you believe you have received this notice in error, please contact management as soon as possible.
 
 Sincerely,
-[Your Company Name]
-[Your Contact Info]
+${businessName}
+${contactInfo}
 `.trim();
   };
 
@@ -197,9 +234,26 @@ Sincerely,
         padding: "2rem",
       }}
     >
-      <h1 style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>
-        RentWarn Dashboard
-      </h1>
+      <div
+  style={{
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "1rem",
+  }}
+>
+  <h1 style={{ fontSize: "2rem", marginBottom: 0 }}>RentWarn Dashboard</h1>
+  <div style={{ display: "flex", gap: "1rem", fontSize: "0.9rem" }}>
+    <Link to="/settings" style={{ color: "#9ca3af" }}>
+      Settings
+    </Link>
+    <Link to="/billing" style={{ color: "#4ade80" }}>
+      Billing
+    </Link>
+  </div>
+</div>
+
+
       <p style={{ marginBottom: "1.5rem", color: "#9ca3af" }}>
         Manage tenants, see who is likely late, and generate late rent notices.
       </p>

@@ -1,18 +1,77 @@
 import type React from "react";
 import type { CSSProperties, FormEvent } from "react";
 import { useState } from "react";
-import { Routes, Route, Link } from "react-router-dom";
+import { Routes, Route, Link, Navigate } from "react-router-dom";
 import { db } from "./firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import Dashboard from "./pages/Dashboard";
+import LoginPage from "./pages/LoginPage";
+import BillingPage from "./pages/BillingPage";
+import SettingsPage from "./pages/SettingsPage";
+import SignupPage from "./pages/SignupPage";
+import { useAuth } from "./auth/AuthContext";
 
 const App: React.FC = () => {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
-      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+	  <Route
+  path="/billing"
+  element={
+    <RequireAuth>
+      <BillingPage />
+    </RequireAuth>
+  }
+/>
+
+      <Route
+        path="/dashboard"
+        element={
+          <RequireAuth>
+            <Dashboard />
+          </RequireAuth>
+        }
+      />
+	  <Route
+  path="/settings"
+  element={
+    <RequireAuth>
+      <SettingsPage />
+    </RequireAuth>
+  }
+/>
+
     </Routes>
   );
+};
+
+const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#0f172a",
+          color: "#e5e7eb",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
 };
 
 const LandingPage: React.FC = () => {
@@ -72,6 +131,32 @@ const LandingPage: React.FC = () => {
           border: "1px solid #1f2937",
         }}
       >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: "1rem",
+            alignItems: "center",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "1rem",
+              fontWeight: 600,
+            }}
+          >
+            RentWarn
+          </span>
+          <div style={{ display: "flex", gap: "0.75rem", fontSize: "0.85rem" }}>
+            <Link to="/login" style={{ color: "#9ca3af" }}>
+              Log in
+            </Link>
+            <Link to="/signup" style={{ color: "#4ade80" }}>
+              Sign up
+            </Link>
+          </div>
+        </div>
+
         <div style={{ marginBottom: "1.5rem" }}>
           <span
             style={{
@@ -231,12 +316,6 @@ const LandingPage: React.FC = () => {
         >
           Built for small landlords and property managers who are tired of
           spreadsheets and chasing checks. No spam. No sharing your email.
-        </p>
-
-        <p style={{ marginTop: "2rem", fontSize: "0.85rem" }}>
-          <Link to="/dashboard" style={{ color: "#4ade80" }}>
-            Go to dashboard (dev only)
-          </Link>
         </p>
       </div>
     </div>
