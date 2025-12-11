@@ -14,6 +14,8 @@ import {
   buildNoticeText,
   type NoticeEditableSections,
 } from "../utils/noticeUtils";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+
 
 type EditableParts = NoticeEditableSections;
 
@@ -278,6 +280,16 @@ const NoticeEditorPage: React.FC = () => {
       setSaving(false);
     }
   };
+  
+    const handleDownloadPdf = async () => {
+    try {
+      await downloadNoticePdf(noticeText, tenant, ownerSettings);
+    } catch (err) {
+      console.error("Failed to generate PDF", err);
+      setStatus("Failed to generate PDF. Please try again.");
+    }
+  };
+
 
   return (
     <div
@@ -569,7 +581,27 @@ const NoticeEditorPage: React.FC = () => {
                 color: "#4ade80",
               }}
             >
+
               {saving ? "Saving..." : "Save & queue email"}
+            </button>
+			
+			<button
+              type="button"
+              onClick={handleDownloadPdf}
+              style={{
+                marginTop: "0.5rem",
+                width: "100%",
+                padding: "0.7rem 1rem",
+                borderRadius: "0.75rem",
+                border: "1px solid #374151",
+                fontWeight: 500,
+                fontSize: "0.9rem",
+                cursor: "pointer",
+                background: "#020617",
+                color: "#e5e7eb",
+              }}
+            >
+              Download PDF
             </button>
 
             {status && (
@@ -638,6 +670,146 @@ const NoticeEditorPage: React.FC = () => {
     </div>
   );
 };
+
+const downloadNoticePdf = async (
+  noticeText: string,
+  tenant: Tenant,
+  ownerSettings: OwnerSettings
+): Promise<void> => {
+  const pdfDoc = await PDFDocument.create();
+  let page = pdfDoc.addPage();
+
+  const { width, height } = page.getSize();
+  const margin = 50;
+  const contentWidth = width - margin * 2;
+
+  const fontSize = 12;
+  const lineHeight = fontSize * 1.4;
+
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const titleFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const textColor = rgb(0.1, 0.1, 0.1); // dark grey, close to black
+
+  let y = height - margin;
+
+  // Helper to add a new page when we run out of space
+  const ensureSpace = (linesNeeded = 1) => {
+    if (y - lineHeight * linesNeeded < margin) {
+      page = pdfDoc.addPage();
+      y = height - margin;
+    }
+  };
+
+  // Draw title
+  const title = "Late Rent Notice";
+  const titleWidth = titleFont.widthOfTextAtSize(title, 18);
+  page.drawText(title, {
+    x: margin + (contentWidth - titleWidth) / 2,
+    y,
+    size: 18,
+    font: titleFont,
+    color: textColor,
+  });
+
+  y -= lineHeight * 2;
+
+  // Header lines (landlord + tenant info)
+  const headerLines = [
+    ownerSettings.businessName || "[Your Company Name]",
+    ownerSettings.contactInfo || "[Your Contact Info]",
+    "",
+    `Tenant: ${tenant.name}`,
+    tenant.unit ? `Unit: ${tenant.unit}` : "",
+  ].filter(Boolean);
+
+  headerLines.forEach((line) => {
+    ensureSpace();
+    page.drawText(line, {
+      x: margin,
+      y,
+      size: fontSize,
+      font,
+      color: textColor,
+    });
+    y -= lineHeight;
+  });
+
+  y -= lineHeight; // extra space before body
+
+  // Word-wrap a single line of text to fit contentWidth
+  const drawWrappedLine = (line: string) => {
+    let remaining = line.trim();
+
+    while (remaining.length > 0) {
+      ensureSpace();
+
+      // If line fits as-is, draw and break
+      let idx = remaining.length;
+      let slice = remaining;
+
+      while (
+        font.widthOfTextAtSize(slice, fontSize) > contentWidth &&
+        idx > 0
+      ) {
+        const lastSpace = remaining.lastIndexOf(" ", idx - 1);
+        if (lastSpace === -1) {
+          // No spaces, hard-break
+          idx = Math.max(1, idx - 1);
+        } else {
+          idx = lastSpace;
+        }
+        slice = remaining.slice(0, idx);
+      }
+
+      const toDraw = slice.trim();
+      if (toDraw.length === 0) {
+        // Avoid infinite loops on weird whitespace
+        break;
+      }
+
+      page.drawText(toDraw, {
+        x: margin,
+        y,
+        size: fontSize,
+        font,
+        color: textColor,
+      });
+
+      y -= lineHeight;
+      remaining = remaining.slice(slice.length).trimStart();
+    }
+  };
+
+  // Respect existing newlines from noticeText
+  // Blank lines become vertical space, non-blank lines are wrapped
+  const lines = noticeText.split("\n");
+  lines.forEach((line) => {
+    if (line.trim() === "") {
+      // Blank line -> extra vertical space
+      ensureSpace();
+      y -= lineHeight;
+    } else {
+      drawWrappedLine(line);
+    }
+  });
+
+  const pdfBytes = await pdfDoc.save();
+
+  const blob = new Blob([pdfBytes as any], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  const safeTenantName = tenant.name.replace(/[^a-z0-9]+/gi, "_");
+  link.href = url;
+  link.download = `rent_notice_${safeTenantName}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+
 
 const backButtonStyle: React.CSSProperties = {
   padding: "0.5rem 0.9rem",

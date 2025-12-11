@@ -9,6 +9,16 @@ import TenantTable from "../components/dashboard/TenantTable";
 import TenantForm from "../components/dashboard/TenantForm";
 import NoticeHistory from "../components/dashboard/NoticeHistory";
 import { tenantService } from "../services/tenantService";
+import { paymentService } from "../services/paymentService";
+
+
+
+const getCurrentPeriod = (): string => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+};
 
 const Dashboard: React.FC = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -19,24 +29,33 @@ const Dashboard: React.FC = () => {
   const [dueDay, setDueDay] = useState("");
   const [lateFeeFlat, setLateFeeFlat] = useState("");
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
 
-  // Load tenants for the current owner
+  const [paidTenantIds, setPaidTenantIds] = useState<string[]>([]);
+
+  const navigate = useNavigate();
+  const period = getCurrentPeriod();
+
+  // Load tenants + payments for the current period
   useEffect(() => {
-    const fetchTenants = async () => {
+    const fetchData = async () => {
       const user = auth.currentUser;
       if (!user) return;
 
       try {
-        const items = await tenantService.getTenantsForOwner(user.uid);
-        setTenants(items);
+        const [tenantItems, paymentItems] = await Promise.all([
+          tenantService.getTenantsForOwner(user.uid),
+          paymentService.getPaymentsForOwnerForPeriod(user.uid, period),
+        ]);
+
+        setTenants(tenantItems);
+        setPaidTenantIds(paymentItems.map((p) => p.tenantId));
       } catch (err) {
-        console.error("Failed to load tenants", err);
+        console.error("Failed to load tenants/payments", err);
       }
     };
 
-    void fetchTenants();
-  }, []);
+    void fetchData();
+  }, [period]);
 
   const handleAddTenant = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -105,8 +124,19 @@ const Dashboard: React.FC = () => {
       },
     });
   };
+  
+  const handleViewLedger = (tenant: Tenant) => {
+  navigate(`/tenant/${tenant.id}`);
+};
+
+
+  const isPaid = (tenant: Tenant): boolean => {
+    return paidTenantIds.includes(tenant.id);
+  };
 
   const isLate = (tenant: Tenant): boolean => {
+    if (isPaid(tenant)) return false;
+
     const today = new Date();
     const todayDay = today.getDate();
     return todayDay > tenant.dueDay;
@@ -114,6 +144,27 @@ const Dashboard: React.FC = () => {
 
   const handleGenerateNotice = (tenant: Tenant) => {
     navigate(`/notice/${tenant.id}`);
+  };
+
+  const handleMarkPaid = async (tenant: Tenant) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+      const amount = tenant.rent; // simple: full rent
+      await paymentService.logPayment({
+        ownerId: user.uid,
+        tenantId: tenant.id,
+        amount,
+        period,
+      });
+
+      setPaidTenantIds((prev) =>
+        prev.includes(tenant.id) ? prev : [...prev, tenant.id]
+      );
+    } catch (err) {
+      console.error("Failed to log payment", err);
+    }
   };
 
   return (
@@ -145,7 +196,8 @@ const Dashboard: React.FC = () => {
       </div>
 
       <p style={{ marginBottom: "1.5rem", color: "#9ca3af" }}>
-        Manage tenants, see who is likely late, and generate late rent notices.
+        Manage tenants, track who has paid this period, see who is likely late,
+        and generate late rent notices.
       </p>
 
       <div
@@ -157,10 +209,14 @@ const Dashboard: React.FC = () => {
         }}
       >
         <TenantTable
-          tenants={tenants}
-          isLate={isLate}
-          onGenerateNotice={handleGenerateNotice}
-        />
+  tenants={tenants}
+  isLate={isLate}
+  isPaid={isPaid}
+  onGenerateNotice={handleGenerateNotice}
+  onMarkPaid={handleMarkPaid}
+  onViewLedger={handleViewLedger}
+/>
+
 
         <TenantForm
           name={name}

@@ -1,8 +1,8 @@
 import type React from "react";
-import { useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { useState, useEffect } from "react";
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { useNavigate, Link } from "react-router-dom";
-import { auth } from "../auth/AuthContext";
+import { auth, useAuth  } from "../auth/AuthContext";
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -10,6 +10,14 @@ const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -22,6 +30,26 @@ const LoginPage: React.FC = () => {
     } catch (err) {
       console.error(err);
       setError("Invalid email or password.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+
+      await signInWithPopup(auth, provider);
+      navigate("/dashboard");
+    } catch (err: any) {
+      console.error(err);
+      if (err.code !== "auth/popup-closed-by-user") {
+        setError("Google sign-in failed.");
+      }
     } finally {
       setLoading(false);
     }
@@ -96,6 +124,35 @@ const LoginPage: React.FC = () => {
             {loading ? "Logging in..." : "Log in"}
           </button>
         </form>
+
+        {/* Google login button */}
+        <button
+          onClick={handleGoogleLogin}
+          disabled={loading}
+          style={{
+            marginTop: "1rem",
+            width: "100%",
+            padding: "0.7rem 1rem",
+            borderRadius: "0.75rem",
+            border: "1px solid #374151",
+            background: "#ffffff",
+            fontWeight: 600,
+            fontSize: "0.95rem",
+            cursor: loading ? "wait" : "pointer",
+            color: "#1f2937",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "0.5rem",
+          }}
+        >
+          <img
+            src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+            alt="Google"
+            style={{ width: "20px", height: "20px" }}
+          />
+          Continue with Google
+        </button>
 
         {error && (
           <p

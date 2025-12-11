@@ -18,22 +18,22 @@ const App: React.FC = () => {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
-	  <Route
-  path="/billing"
-  element={
-    <RequireAuth>
-      <BillingPage />
-    </RequireAuth>
-  }
-/>
-	  <Route
-  path="/notice/:tenantId"
-  element={
-    <RequireAuth>
-      <NoticeEditorPage />
-    </RequireAuth>
-  }
-/>
+      <Route
+        path="/billing"
+        element={
+          <RequireAuth>
+            <BillingPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/notice/:tenantId"
+        element={
+          <RequireAuth>
+            <NoticeEditorPage />
+          </RequireAuth>
+        }
+      />
 
       <Route
         path="/dashboard"
@@ -43,15 +43,14 @@ const App: React.FC = () => {
           </RequireAuth>
         }
       />
-	  <Route
-  path="/settings"
-  element={
-    <RequireAuth>
-      <SettingsPage />
-    </RequireAuth>
-  }
-/>
-
+      <Route
+        path="/settings"
+        element={
+          <RequireAuth>
+            <SettingsPage />
+          </RequireAuth>
+        }
+      />
     </Routes>
   );
 };
@@ -84,6 +83,8 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 const LandingPage: React.FC = () => {
+  const { user, loading, signOut } = useAuth();
+
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
   const [units, setUnits] = useState("");
@@ -157,12 +158,39 @@ const LandingPage: React.FC = () => {
             RentWarn
           </span>
           <div style={{ display: "flex", gap: "0.75rem", fontSize: "0.85rem" }}>
-            <Link to="/login" style={{ color: "#9ca3af" }}>
-              Log in
-            </Link>
-            <Link to="/signup" style={{ color: "#4ade80" }}>
-              Sign up
-            </Link>
+            {loading ? null : user ? (
+              <>
+                <Link to="/dashboard" style={{ color: "#4ade80" }}>
+                  Dashboard
+                </Link>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await signOut();
+                  }}
+                  style={{
+                    padding: "0.3rem 0.7rem",
+                    borderRadius: "0.6rem",
+                    border: "1px solid #374151",
+                    background: "#020617",
+                    color: "#e5e7eb",
+                    fontSize: "0.8rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" style={{ color: "#9ca3af" }}>
+                  Log in
+                </Link>
+                <Link to="/signup" style={{ color: "#4ade80" }}>
+                  Sign up
+                </Link>
+              </>
+            )}
           </div>
         </div>
 
