@@ -10,6 +10,7 @@ import BillingPage from "./pages/BillingPage";
 import NoticeEditorPage from "./pages/NoticeEditorPage";
 import SettingsPage from "./pages/SettingsPage";
 import SignupPage from "./pages/SignupPage";
+import TenantLedgerPage from "./pages/TenantLedgerPage";
 import { useAuth } from "./auth/AuthContext";
 
 const App: React.FC = () => {
@@ -31,6 +32,14 @@ const App: React.FC = () => {
         element={
           <RequireAuth>
             <NoticeEditorPage />
+          </RequireAuth>
+        }
+      />
+	  <Route
+        path="/tenant/:tenantId"
+        element={
+          <RequireAuth>
+            <TenantLedgerPage />
           </RequireAuth>
         }
       />
@@ -59,6 +68,7 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
+  /*
     return (
       <div
         style={{
@@ -72,7 +82,7 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       >
         <p>Loading...</p>
       </div>
-    );
+    );*/ return null;
   }
 
   if (!user) {
@@ -84,6 +94,24 @@ const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 const LandingPage: React.FC = () => {
   const { user, loading, signOut } = useAuth();
+  
+  if (loading) {
+  /*
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#0f172a",
+          color: "#e5e7eb",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <p>Loading...</p>
+      </div>
+    );*/ return null;
+  }
 
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");

@@ -1,7 +1,7 @@
 import type React from "react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, Navigate } from "react-router-dom";
 import { auth, useAuth  } from "../auth/AuthContext";
 
 const SignupPage: React.FC = () => {
@@ -10,15 +10,18 @@ const SignupPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  
-  const { user } = useAuth();
+    
+  const { user, loading: authLoading } = useAuth(); // use auth loading
 
-  useEffect(() => {
-    if (user) {
-      navigate("/dashboard", { replace: true });
-    }
-  }, [user, navigate]);
+  // 🔹 1. While Firebase is figuring out if there's a user, render nothing (or a spinner)
+  if (authLoading) {
+    return null; // or a full-screen loader component
+  }
 
+  // 🔹 2. If user is already logged in, never show this page at all
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);

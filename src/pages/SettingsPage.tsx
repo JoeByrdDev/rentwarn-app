@@ -1,37 +1,46 @@
+// src/pages/SettingsPage.tsx
 import type React from "react";
 import { useEffect, useState } from "react";
-//import { doc, getDoc, setDoc } from "firebase/firestore";
-//import { db } from "../firebase";
-import { auth } from "../auth/AuthContext";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
 import type { OwnerSettings } from "../types/ownerSettings";
 import { ownerService } from "../services/ownerService";
 
 const SettingsPage: React.FC = () => {
+  const { user, loading: authLoading } = useAuth();
+
   const [settings, setSettings] = useState<OwnerSettings>({
     businessName: "",
     contactInfo: "",
     defaultDueDay: null,
     defaultLateFeeFlat: null,
   });
-  const [loading, setLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-  const fetchSettings = async () => {
-    const user = auth.currentUser;
+    if (authLoading) return;
     if (!user) {
-      setLoading(false);
+      setSettingsLoading(false);
       return;
     }
 
-    const s = await ownerService.getOwnerSettings(user.uid);
-    setSettings(s);
-    setLoading(false);
-  };
+    const fetchSettings = async () => {
+      setSettingsLoading(true);
+      try {
+        const s = await ownerService.getOwnerSettings(user.uid);
+        setSettings(s);
+      } catch (err) {
+        console.error("Error loading owner settings", err);
+      } finally {
+        setSettingsLoading(false);
+      }
+    };
 
     void fetchSettings();
-  }, []);
+  }, [authLoading, user]);
+  
 
   const handleChange =
     (field: keyof OwnerSettings) =>
@@ -49,38 +58,32 @@ const SettingsPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const user = auth.currentUser;
-if (!user) return;
+    if (!user) return;
 
-setSaving(true);
-setStatus(null);
+    setSaving(true);
+    setStatus(null);
 
-try {
-  await ownerService.saveOwnerSettings(user.uid, settings);
-  setStatus("Saved");
-} catch (err) {
-  console.error(err);
-  setStatus("Error saving settings");
-} finally {
-  setSaving(false);
-}
+    try {
+      await ownerService.saveOwnerSettings(user.uid, settings);
+      setStatus("Saved");
+    } catch (err) {
+      console.error(err);
+      setStatus("Error saving settings");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (loading) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#0f172a",
-          color: "#e5e7eb",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <p>Loading settings...</p>
-      </div>
-    );
+  // While auth is still initializing, don't render anything different
+  // (your app-level wrapper can handle a global loader if you want)
+  if (authLoading || settingsLoading) {
+    return null;
+  }
+
+  // If this route isn't supposed to be visible while logged out,
+  // you can hard-redirect:
+  if (!user) {
+    return <Navigate to="/login" replace />;
   }
 
   return (
@@ -107,50 +110,12 @@ try {
           border: "1px solid #1f2937",
         }}
       >
-        <div style={{ display: "grid", gap: "0.75rem" }}>
-          <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: "0.9rem",
-                marginBottom: "0.25rem",
-              }}
-            >
-              Business / management name
-            </label>
-            <input
-              type="text"
-              value={settings.businessName}
-              onChange={(e) => handleChange("businessName")(e.target.value)}
-              style={inputStyle}
-              placeholder="e.g. Sunrise Property Management LLC"
-            />
-          </div>
-
-          <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: "0.9rem",
-                marginBottom: "0.25rem",
-              }}
-            >
-              Contact info for notices
-            </label>
-            <textarea
-              value={settings.contactInfo}
-              onChange={(e) => handleChange("contactInfo")(e.target.value)}
-              style={{
-                ...inputStyle,
-                minHeight: "80px",
-                resize: "vertical",
-              }}
-              placeholder={"e.g.\n(555) 123-4567\nrent@sunrisepm.com"}
-            />
-          </div>
-
-          <div style={{ display: "flex", gap: "0.75rem" }}>
-            <div style={{ flex: 1 }}>
+        {settingsLoading ? (
+          // 🔹 Inner loading state – layout stays stable
+          <p>Loading settings...</p>
+        ) : (
+          <div style={{ display: "grid", gap: "0.75rem" }}>
+            <div>
               <label
                 style={{
                   display: "block",
@@ -158,43 +123,90 @@ try {
                   marginBottom: "0.25rem",
                 }}
               >
-                Default due day (1–31)
+                Business / management name
               </label>
               <input
-                type="number"
-                min={1}
-                max={31}
-                value={settings.defaultDueDay ?? ""}
-                onChange={(e) => handleChange("defaultDueDay")(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "0.9rem",
-                  marginBottom: "0.25rem",
-                }}
-              >
-                Default flat late fee
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={settings.defaultLateFeeFlat ?? ""}
+                type="text"
+                value={settings.businessName}
                 onChange={(e) =>
-                  handleChange("defaultLateFeeFlat")(e.target.value)
+                  handleChange("businessName")(e.target.value)
                 }
                 style={inputStyle}
+                placeholder="e.g. Sunrise Property Management LLC"
               />
             </div>
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.9rem",
+                  marginBottom: "0.25rem",
+                }}
+              >
+                Contact info for notices
+              </label>
+              <textarea
+                value={settings.contactInfo}
+                onChange={(e) => handleChange("contactInfo")(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  minHeight: "80px",
+                  resize: "vertical",
+                }}
+                placeholder={"e.g.\n(555) 123-4567\nrent@sunrisepm.com"}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <div style={{ flex: 1 }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "0.9rem",
+                    marginBottom: "0.25rem",
+                  }}
+                >
+                  Default due day (1–31)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={settings.defaultDueDay ?? ""}
+                  onChange={(e) =>
+                    handleChange("defaultDueDay")(e.target.value)
+                  }
+                  style={inputStyle}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "0.9rem",
+                    marginBottom: "0.25rem",
+                  }}
+                >
+                  Default flat late fee
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.defaultLateFeeFlat ?? ""}
+                  onChange={(e) =>
+                    handleChange("defaultLateFeeFlat")(e.target.value)
+                  }
+                  style={inputStyle}
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || settingsLoading}
           style={{
             marginTop: "1rem",
             width: "100%",
@@ -203,10 +215,11 @@ try {
             border: "none",
             fontWeight: 600,
             fontSize: "0.95rem",
-            cursor: saving ? "wait" : "pointer",
-            background: saving
-              ? "#4b5563"
-              : "linear-gradient(135deg, #22c55e, #16a34a)",
+            cursor: saving || settingsLoading ? "wait" : "pointer",
+            background:
+              saving || settingsLoading
+                ? "#4b5563"
+                : "linear-gradient(135deg, #22c55e, #16a34a)",
             color: "#020617",
           }}
         >

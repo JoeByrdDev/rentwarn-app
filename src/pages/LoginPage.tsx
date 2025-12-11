@@ -1,28 +1,36 @@
 import type React from "react";
-import { useState, useEffect } from "react";
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { useNavigate, Link } from "react-router-dom";
-import { auth, useAuth  } from "../auth/AuthContext";
+import { useState } from "react";
+import {
+  signInWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+} from "firebase/auth";
+import { useNavigate, Link, Navigate } from "react-router-dom";
+import { auth, useAuth } from "../auth/AuthContext";
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [formLoading, setFormLoading] = useState(false); // renamed
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  
-  const { user } = useAuth();
 
-  useEffect(() => {
-    if (user) {
-      navigate("/dashboard", { replace: true });
-    }
-  }, [user, navigate]);
+  const { user, loading: authLoading } = useAuth(); // use auth loading
+
+  // 🔹 1. While Firebase is figuring out if there's a user, render nothing (or a spinner)
+  if (authLoading) {
+    return null; // or a full-screen loader component
+  }
+
+  // 🔹 2. If user is already logged in, never show this page at all
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
+    setFormLoading(true);
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
@@ -31,13 +39,13 @@ const LoginPage: React.FC = () => {
       console.error(err);
       setError("Invalid email or password.");
     } finally {
-      setLoading(false);
+      setFormLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
     setError(null);
-    setLoading(true);
+    setFormLoading(true);
 
     try {
       const provider = new GoogleAuthProvider();
@@ -51,7 +59,7 @@ const LoginPage: React.FC = () => {
         setError("Google sign-in failed.");
       }
     } finally {
-      setLoading(false);
+      setFormLoading(false);
     }
   };
 
@@ -79,7 +87,13 @@ const LoginPage: React.FC = () => {
         }}
       >
         <h1 style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>Log in</h1>
-        <p style={{ fontSize: "0.9rem", color: "#9ca3af", marginBottom: "1.25rem" }}>
+        <p
+          style={{
+            fontSize: "0.9rem",
+            color: "#9ca3af",
+            marginBottom: "1.25rem",
+          }}
+        >
           Log in to manage your tenants and late rent notices.
         </p>
 
@@ -105,7 +119,7 @@ const LoginPage: React.FC = () => {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={formLoading}
             style={{
               marginTop: "1rem",
               width: "100%",
@@ -114,21 +128,20 @@ const LoginPage: React.FC = () => {
               border: "none",
               fontWeight: 600,
               fontSize: "0.95rem",
-              cursor: loading ? "wait" : "pointer",
-              background: loading
+              cursor: formLoading ? "wait" : "pointer",
+              background: formLoading
                 ? "#4b5563"
                 : "linear-gradient(135deg, #22c55e, #16a34a)",
               color: "#020617",
             }}
           >
-            {loading ? "Logging in..." : "Log in"}
+            {formLoading ? "Logging in..." : "Log in"}
           </button>
         </form>
 
-        {/* Google login button */}
         <button
           onClick={handleGoogleLogin}
-          disabled={loading}
+          disabled={formLoading}
           style={{
             marginTop: "1rem",
             width: "100%",
@@ -138,7 +151,7 @@ const LoginPage: React.FC = () => {
             background: "#ffffff",
             fontWeight: 600,
             fontSize: "0.95rem",
-            cursor: loading ? "wait" : "pointer",
+            cursor: formLoading ? "wait" : "pointer",
             color: "#1f2937",
             display: "flex",
             alignItems: "center",

@@ -3,15 +3,13 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Papa from "papaparse";
 import type { ParseResult } from "papaparse";
-import { auth } from "../auth/AuthContext";
+import { auth, useAuth } from "../auth/AuthContext";
 import type { Tenant } from "../types/tenant";
 import TenantTable from "../components/dashboard/TenantTable";
 import TenantForm from "../components/dashboard/TenantForm";
 import NoticeHistory from "../components/dashboard/NoticeHistory";
 import { tenantService } from "../services/tenantService";
 import { paymentService } from "../services/paymentService";
-
-
 
 const getCurrentPeriod = (): string => {
   const today = new Date();
@@ -34,6 +32,12 @@ const Dashboard: React.FC = () => {
 
   const navigate = useNavigate();
   const period = getCurrentPeriod();
+  const { signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/login");
+  };
 
   // Load tenants + payments for the current period
   useEffect(() => {
@@ -124,11 +128,10 @@ const Dashboard: React.FC = () => {
       },
     });
   };
-  
-  const handleViewLedger = (tenant: Tenant) => {
-  navigate(`/tenant/${tenant.id}`);
-};
 
+  const handleViewLedger = (tenant: Tenant) => {
+    navigate(`/tenant/${tenant.id}`);
+  };
 
   const isPaid = (tenant: Tenant): boolean => {
     return paidTenantIds.includes(tenant.id);
@@ -185,13 +188,28 @@ const Dashboard: React.FC = () => {
         }}
       >
         <h1 style={{ fontSize: "2rem", marginBottom: 0 }}>RentWarn Dashboard</h1>
-        <div style={{ display: "flex", gap: "1rem", fontSize: "0.9rem" }}>
+        <div style={{ display: "flex", gap: "1rem", fontSize: "0.9rem", alignItems: "center" }}>
           <Link to="/settings" style={{ color: "#9ca3af" }}>
             Settings
           </Link>
           <Link to="/billing" style={{ color: "#4ade80" }}>
             Billing
           </Link>
+          <button
+            type="button"
+            onClick={handleLogout}
+            style={{
+              padding: "0.4rem 0.8rem",
+              borderRadius: "0.6rem",
+              border: "1px solid #374151",
+              background: "#020617",
+              color: "#e5e7eb",
+              fontSize: "0.85rem",
+              cursor: "pointer",
+            }}
+          >
+            Log out
+          </button>
         </div>
       </div>
 
@@ -209,14 +227,13 @@ const Dashboard: React.FC = () => {
         }}
       >
         <TenantTable
-  tenants={tenants}
-  isLate={isLate}
-  isPaid={isPaid}
-  onGenerateNotice={handleGenerateNotice}
-  onMarkPaid={handleMarkPaid}
-  onViewLedger={handleViewLedger}
-/>
-
+          tenants={tenants}
+          isLate={isLate}
+          isPaid={isPaid}
+          onGenerateNotice={handleGenerateNotice}
+          onMarkPaid={handleMarkPaid}
+          onViewLedger={handleViewLedger}
+        />
 
         <TenantForm
           name={name}

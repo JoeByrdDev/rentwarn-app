@@ -1,8 +1,8 @@
 // src/pages/TenantLedgerPage.tsx
 import type React from "react";
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { auth } from "../auth/AuthContext";
+import { useParams, useNavigate, Navigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
 import type { Tenant } from "../types/tenant";
 import type { Payment } from "../types/payment";
 import { tenantService } from "../services/tenantService";
@@ -18,6 +18,7 @@ type LedgerRow = {
 const TenantLedgerPage: React.FC = () => {
   const { tenantId } = useParams();
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [rows, setRows] = useState<LedgerRow[]>([]);
@@ -26,22 +27,24 @@ const TenantLedgerPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Wait until auth is initialized
+    if (authLoading) return;
+
+    if (!user) {
+      setError("You must be logged in to view this ledger.");
+      setLoading(false);
+      return;
+    }
+
+    if (!tenantId) {
+      setError("No tenant selected.");
+      setLoading(false);
+      return;
+    }
+
     const load = async () => {
       setLoading(true);
       setError(null);
-
-      const user = auth.currentUser;
-      if (!user) {
-        setError("You must be logged in to view this ledger.");
-        setLoading(false);
-        return;
-      }
-
-      if (!tenantId) {
-        setError("No tenant selected.");
-        setLoading(false);
-        return;
-      }
 
       try {
         const [tenantObj, tenantPayments] = await Promise.all([
@@ -67,23 +70,21 @@ const TenantLedgerPage: React.FC = () => {
     };
 
     void load();
-  }, [tenantId]);
+  }, [authLoading, user, tenantId]);
+
+  // 🔹 While auth is still initializing, show a loader (so we don't just return null)
+  if (authLoading) {
+
+    return null
+  }
+
+  // 🔹 If this is a protected route and user is not logged in, bounce to login
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
   if (loading) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#0f172a",
-          color: "#e5e7eb",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <p>Loading tenant ledger...</p>
-      </div>
-    );
+    return null
   }
 
   if (error || !tenant) {
@@ -154,8 +155,8 @@ const TenantLedgerPage: React.FC = () => {
         }}
       >
         <p style={{ fontSize: "0.9rem", color: "#9ca3af" }}>
-          Unit: {tenant.unit || "-"} • Rent: $
-          {tenant.rent.toFixed(2)} • Due day: {tenant.dueDay}
+          Unit: {tenant.unit || "-"} • Rent: ${tenant.rent.toFixed(2)} • Due
+          day: {tenant.dueDay}
         </p>
       </div>
 
@@ -173,8 +174,8 @@ const TenantLedgerPage: React.FC = () => {
 
         {rows.length === 0 ? (
           <p style={{ fontSize: "0.9rem", color: "#9ca3af" }}>
-            No ledger data yet. Mark payments from the dashboard to see
-            history here.
+            No ledger data yet. Mark payments from the dashboard to see history
+            here.
           </p>
         ) : (
           <table
@@ -197,9 +198,7 @@ const TenantLedgerPage: React.FC = () => {
                 <tr key={row.period}>
                   <td style={tdStyle}>{formatPeriod(row.period)}</td>
                   <td style={tdStyle}>
-                    {row.expected > 0
-                      ? `$${row.expected.toFixed(2)}`
-                      : "-"}
+                    {row.expected > 0 ? `$${row.expected.toFixed(2)}` : "-"}
                   </td>
                   <td style={tdStyle}>
                     {row.paid > 0 ? `$${row.paid.toFixed(2)}` : "-"}
@@ -257,9 +256,7 @@ const TenantLedgerPage: React.FC = () => {
               {payments.map((p) => (
                 <tr key={p.id}>
                   <td style={tdStyle}>
-                    {p.createdAt
-                      ? p.createdAt.toLocaleDateString()
-                      : "-"}
+                    {p.createdAt ? p.createdAt.toLocaleDateString() : "-"}
                   </td>
                   <td style={tdStyle}>{p.period}</td>
                   <td style={tdStyle}>${p.amount.toFixed(2)}</td>
@@ -273,14 +270,12 @@ const TenantLedgerPage: React.FC = () => {
   );
 };
 
-const buildLedgerRows = (
-  tenant: Tenant,
-  payments: Payment[]
-): LedgerRow[] => {
+// ===== helpers (unchanged from your logic) =====
+
+const buildLedgerRows = (tenant: Tenant, payments: Payment[]): LedgerRow[] => {
   const now = new Date();
   const rows: LedgerRow[] = [];
 
-  // Sum payments by period
   const paidByPeriod: Record<string, number> = {};
   for (const p of payments) {
     if (!p.period) continue;
@@ -308,7 +303,7 @@ const buildLedgerRows = (
     rows.push({ period, expected, paid, status });
   }
 
-  // Show newest first
+  // newest first
   return rows.sort((a, b) => (a.period < b.period ? 1 : -1));
 };
 
